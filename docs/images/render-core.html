@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>EcoGrid Core Architecture</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #ffffff;
+            margin: 0;
+            padding: 30px;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div id="diagram" class="mermaid">
+graph TD
+    subgraph IoT_Layer["IoT Smart Meter Tier"]
+        SM1["Smart Meter 001<br/>(Solar + Home Load)"]
+        SM2["Smart Meter 002<br/>(Solar + Home Load)"]
+        SMN["Smart Meter N...<br/>(Solar + Home Load)"]
+    end
+
+    subgraph Context_SmartMeter["Bounded Context: Smart Meter Integration"]
+        SIM["SmartMeterSimulator / Ingestion Engine"]
+        SURPLUS["Surplus Calculator<br/>(Generation - Consumption)"]
+    end
+
+    subgraph Event_Tier["Decoupled Asynchronous Event Bus"]
+        EB["EventBus (In-Memory / Async Dispatch)"]
+        DLQ["Dead Letter Queue (DLQ)<br/>(Failed Event Isolation)"]
+    end
+
+    subgraph Context_Marketplace["Bounded Context: Marketplace"]
+        MP["MarketplaceService<br/>(Order Book & Matching Engine)"]
+        SUP_Q["Seller Supply Queue<br/>(FIFO)"]
+        DEM_Q["Buyer Demand Queue<br/>(FIFO)"]
+    end
+
+    subgraph Context_Settlement["Bounded Context: Financial Settlement"]
+        SETTLE["SettlementService<br/>(Ledger & Idempotency Validator)"]
+        DB["SQLite Financial Ledger<br/>data/ecogrid.db"]
+    end
+
+    SM1 -->|"High-Frequency Telemetry"| SIM
+    SM2 -->|"High-Frequency Telemetry"| SIM
+    SMN -->|"High-Frequency Telemetry"| SIM
+    SIM --> SURPLUS
+    SURPLUS -->|"MeterReadingEvent"| EB
+
+    EB -->|"MeterReadingEvent"| MP
+    EB -->|"EnergyDemandEvent"| MP
+    MP --> SUP_Q
+    MP --> DEM_Q
+    SUP_Q --> MP
+    DEM_Q --> MP
+
+    MP -->|"TradeMatchedEvent"| EB
+    EB -->|"TradeMatchedEvent"| SETTLE
+    SETTLE -->|"Idempotent ACID Transaction"| DB
+    SETTLE -->|"SettlementCompletedEvent"| EB
+
+    EB -.->|"Exhausted Retries"| DLQ
+    </div>
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            flowchart: { useMaxWidth: false, htmlLabels: true }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# EcoGrid Energy - Proof of Concept Dependencies
+# The core proof-of-concept leverages the standard Python 3.10+ runtime:
+# - asyncio (Asynchronous I/O and event scheduling)
+# - sqlite3 (ACID-compliant relational persistence)
+# - dataclasses (Immutable domain event modeling)
+# - unittest (Automated testing and fitness function execution)
+# - logging (Structured logging and observability)
+#
+# No external third-party packages are required to run the core PoC, tests, or benchmarks.

@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>EcoGrid Energy Diagram Renderer</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #ffffff;
+            margin: 20px;
+            color: #1e293b;
+        }
+        .diagram-container {
+            margin-bottom: 50px;
+            padding: 20px;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            display: inline-block;
+        }
+        h2 {
+            margin-top: 0;
+            color: #0f172a;
+        }
+    </style>
+</head>
+<body>
+    <div class="diagram-container">
+        <h2>EcoGrid Core Architecture</h2>
+        <div id="container-core" class="mermaid">
+graph TD
+    subgraph IoT_Layer["IoT Smart Meter Tier"]
+        SM1["Smart Meter 001<br/>(Solar + Home Load)"]
+        SM2["Smart Meter 002<br/>(Solar + Home Load)"]
+        SMN["Smart Meter N...<br/>(Solar + Home Load)"]
+    end
+
+    subgraph Context_SmartMeter["Bounded Context: Smart Meter Integration"]
+        SIM["SmartMeterSimulator / Ingestion Engine"]
+        SURPLUS["Surplus Calculator<br/>(Generation - Consumption)"]
+    end
+
+    subgraph Event_Tier["Decoupled Asynchronous Event Bus"]
+        EB["EventBus (In-Memory / Async Dispatch)"]
+        DLQ["Dead Letter Queue (DLQ)<br/>(Failed Event Isolation)"]
+    end
+
+    subgraph Context_Marketplace["Bounded Context: Marketplace"]
+        MP["MarketplaceService<br/>(Order Book & Matching Engine)"]
+        SUP_Q["Seller Supply Queue<br/>(FIFO)"]
+        DEM_Q["Buyer Demand Queue<br/>(FIFO)"]
+    end
+
+    subgraph Context_Settlement["Bounded Context: Financial Settlement"]
+        SETTLE["SettlementService<br/>(Ledger & Idempotency Validator)"]
+        DB["SQLite Financial Ledger<br/>data/ecogrid.db"]
+    end
+
+    SM1 -->|"High-Frequency Telemetry"| SIM
+    SM2 -->|"High-Frequency Telemetry"| SIM
+    SMN -->|"High-Frequency Telemetry"| SIM
+    SIM --> SURPLUS
+    SURPLUS -->|"MeterReadingEvent"| EB
+
+    EB -->|"MeterReadingEvent"| MP
+    EB -->|"EnergyDemandEvent"| MP
+    MP --> SUP_Q
+    MP --> DEM_Q
+    SUP_Q --> MP
+    DEM_Q --> MP
+
+    MP -->|"TradeMatchedEvent"| EB
+    EB -->|"TradeMatchedEvent"| SETTLE
+    SETTLE -->|"Idempotent ACID Transaction"| DB
+    SETTLE -->|"SettlementCompletedEvent"| EB
+
+    EB -.->|"Exhausted Retries"| DLQ
+        </div>
+    </div>
+
+    <div class="diagram-container">
+        <h2>EcoGrid End-to-End Event Lifecycle</h2>
+        <div id="container-lifecycle" class="mermaid">
+sequenceDiagram
+    autonumber
+    actor Meter as IoT Smart Meter
+    participant SMI as Smart Meter Context
+    participant Bus as EventBus (Async)
+    participant MKT as Marketplace Context
+    participant SET as Settlement Context
+    participant DB as SQLite Ledger
+
+    Meter->>SMI: Solar Generation (3.5 kWh), Consumption (1.0 kWh)
+    SMI->>SMI: Calculate Surplus = 2.5 kWh
+    SMI->>Bus: publish(MeterReadingEvent)
+    Bus->>MKT: handle_meter_reading(event)
+    Note over MKT: Enqueues SupplyOffer (2.5 kWh)
+
+    Note over MKT: Matches against queued BuyerDemand (2.5 kWh @ 0.25 AUD/kWh)
+    MKT->>Bus: publish(TradeMatchedEvent)
+    Bus->>SET: handle_trade_matched(trade_event)
+
+    SET->>DB: Query trade_id existence
+    alt Not Settled (Idempotency Check Passed)
+        SET->>DB: Insert new settlement record
+        SET->>Bus: publish(SettlementCompletedEvent)
+    else Already Settled
+        SET-->>Bus: Log warning and skip duplicate
+    end
+        </div>
+    </div>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            securityLevel: 'loose',
+            flowchart: {
+                useMaxWidth: false,
+                htmlLabels: true
+            },
+            sequence: {
+                useMaxWidth: false,
+                htmlLabels: true
+            }
+        });
+    </script>
+</body>
+</html>
